@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --accent: #1d1d1f;
   --space: #6e6e73;
   --space-2: #86868b;
@@ -116,8 +116,8 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: min(450px, 28vw);
-  min-width: 260px;
+  width: clamp(250px, 19vw, 310px);
+  min-width: 250px;
   height: 48px;
   padding: 0 15px;
   background: #f3f3f5;
@@ -691,7 +691,7 @@ label {
 }
 
 .detail-dialog {
-  width: min(840px, calc(100% - 28px));
+  width: min(760px, calc(100% - 28px));
   padding: 0;
   border: 0;
   border-radius: 10px;
@@ -738,7 +738,9 @@ label {
 }
 
 .detail-body {
-  padding: 30px;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 34px 38px 42px;
 }
 
 .detail-body h3 {
@@ -843,4 +845,25 @@ label {
   .mini-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.detail-review-text {
+  max-width: 58ch;
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 2;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.detail-review-text p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  line-height: 2;
+}
+
+.detail-review-text p:last-child {
+  margin-bottom: 0;
 }

@@ -1,4 +1,44 @@
-const reviews = [];
+const STORAGE_KEYS = {
+  reviews: "gamesubpoterReviews",
+  users: "gamesubpoterUsers",
+  currentUser: "gamesubpoterCurrentUser",
+};
+
+function loadJSON(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveToStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.warn("localStorage save failed:", error);
+    return false;
+  }
+}
+
+function saveReviews() {
+  return saveToStorage(STORAGE_KEYS.reviews, reviews);
+}
+
+function saveUsers() {
+  return saveToStorage(STORAGE_KEYS.users, [...users.values()]);
+}
+
+function saveCurrentUser() {
+  if (currentUser) {
+    saveToStorage(STORAGE_KEYS.currentUser, currentUser);
+    return;
+  }
+  localStorage.removeItem(STORAGE_KEYS.currentUser);
+}
+
+const reviews = loadJSON(STORAGE_KEYS.reviews, []);
 
 let current = 0;
 let timer;
@@ -16,8 +56,9 @@ const userMenu = document.querySelector("#userMenu");
 const headerNickname = document.querySelector("#headerNickname");
 const toast = document.querySelector("#toast");
 
-const users = new Map();
-let currentUser = null;
+const users = new Map(loadJSON(STORAGE_KEYS.users, []).map((user) => [user.id, user]));
+let currentUser = loadJSON(STORAGE_KEYS.currentUser, null);
+
 let toastTimer;
 
 function starText(value) {
@@ -29,6 +70,55 @@ function starText(value) {
 
 function placeholderInitial(name) {
   return (name || "G").trim().slice(0, 1).toUpperCase();
+}
+
+function escapeHTML(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatReviewDetail(value) {
+  const escaped = escapeHTML(value).trim();
+  if (!escaped) return "<p>작성된 상세 리뷰가 없습니다.</p>";
+
+  const withParagraphs = escaped.includes("\n")
+    ? escaped
+    : escaped.replace(/([.!?])\s+/g, "$1\n\n");
+
+  return withParagraphs
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${paragraph.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function resizeImageFile(file, maxWidth = 1200, quality = 0.78) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      const image = new Image();
+      image.addEventListener("load", () => {
+        const scale = Math.min(1, maxWidth / image.width);
+        const width = Math.round(image.width * scale);
+        const height = Math.round(image.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      });
+      image.addEventListener("error", () => resolve(String(reader.result)));
+      image.src = String(reader.result);
+    });
+    reader.addEventListener("error", reject);
+    reader.readAsDataURL(file);
+  });
 }
 
 function renderEmptyState() {
@@ -113,7 +203,7 @@ function openDetail(review) {
       <h3>${review.name}</h3>
       <div class="stars">${starText(review.rating)} ${review.rating}</div>
       <p class="one-line">${review.line}</p>
-      <p>${review.detail}</p>
+      <div class="detail-review-text">${formatReviewDetail(review.detail)}</div>
     </div>
   `;
   detailDialog.showModal();
@@ -243,6 +333,7 @@ function updateAuthHeader() {
 
 function completeAuth(user, message) {
   currentUser = user;
+  saveCurrentUser();
   updateAuthHeader();
   showToast(message);
   moveToTop();
@@ -280,6 +371,7 @@ document.querySelector("#signupButton").addEventListener("click", () => {
 
   const user = { id, nickname, password };
   users.set(id, user);
+  saveUsers();
   document.querySelector("#signupId").value = "";
   document.querySelector("#signupNickname").value = "";
   document.querySelector("#signupPassword").value = "";
@@ -296,12 +388,17 @@ document.querySelector("#loginButton").addEventListener("click", () => {
   }
 
   const savedUser = users.get(id);
-  if (savedUser && savedUser.password !== password) {
+  if (!savedUser) {
+    showToast("가입된 아이디가 없습니다.");
+    return;
+  }
+
+  if (savedUser.password !== password) {
     showToast("비밀번호가 일치하지 않습니다.");
     return;
   }
 
-  const user = savedUser || { id, nickname: id, password };
+  const user = savedUser;
   document.querySelector("#loginId").value = "";
   document.querySelector("#loginPassword").value = "";
   completeAuth(user, "로그인 완료");
@@ -309,6 +406,7 @@ document.querySelector("#loginButton").addEventListener("click", () => {
 
 document.querySelector("#logoutButton").addEventListener("click", () => {
   currentUser = null;
+  saveCurrentUser();
   updateAuthHeader();
   showToast("로그아웃 완료");
   moveToTop();
@@ -326,20 +424,23 @@ topSearchInput.addEventListener("input", () => {
   renderSearchResults();
 });
 
-document.querySelector("#imageUpload").addEventListener("change", (event) => {
+document.querySelector("#imageUpload").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   const preview = document.querySelector("#uploadPreview");
   uploadedImage = "";
   if (!file) {
-    preview.innerHTML = "<span>게임 사진을 업로드하면 이곳에 미리보기로 표시됩니다.</span>";
+    preview.innerHTML = "<span>?? ??? ????? ??? ????? ?????.</span>";
     return;
   }
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    uploadedImage = String(reader.result);
-    preview.innerHTML = `<img src="${uploadedImage}" alt="업로드한 게임 사진 미리보기" />`;
-  });
-  reader.readAsDataURL(file);
+
+  preview.innerHTML = "<span>???? ???? ????.</span>";
+  try {
+    uploadedImage = await resizeImageFile(file);
+    preview.innerHTML = `<img src="${uploadedImage}" alt="???? ?? ?? ????" />`;
+  } catch {
+    uploadedImage = "";
+    preview.innerHTML = "<span>???? ???? ?????. ?? ???? ??? ???.</span>";
+  }
 });
 
 document.querySelector("#reviewForm").addEventListener("submit", (event) => {
@@ -355,6 +456,8 @@ document.querySelector("#reviewForm").addEventListener("submit", (event) => {
     detail: String(data.get("detail")).trim(),
     image: uploadedImage,
   });
+  saveReviews();
+  showToast("리뷰가 저장되었습니다.");
   uploadedImage = "";
   event.currentTarget.reset();
   document.querySelector("#uploadPreview").innerHTML = "<span>게임 사진을 업로드하면 이곳에 미리보기로 표시됩니다.</span>";
